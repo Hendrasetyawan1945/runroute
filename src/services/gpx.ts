@@ -28,9 +28,10 @@ export function generateGpxString(
   // Set starting time to 06:00 AM today (classic morning run time)
   const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 6, 0, 0);
 
+  const hasPace = targetPaceMinutes && targetPaceMinutes > 0;
   // Speed in meters per second:
   // Pace P min/km => (P * 60) seconds per 1000m => speed = 1000 / (P * 60) m/s
-  const paceSecondsPerMeter = (targetPaceMinutes * 60) / 1000;
+  const paceSecondsPerMeter = hasPace ? (targetPaceMinutes * 60) / 1000 : 0;
 
   // Build elevation map / lookup if available
   const hasElevationPoints = elevationStats && elevationStats.points.length > 0;
@@ -46,10 +47,12 @@ export function generateGpxString(
     if (i > 0) {
       const segDistance = calculateHaversineDistance(coordinates[i - 1], coordinates[i]);
       cumulativeDistanceMeters += segDistance;
-      currentTimestampMs += segDistance * paceSecondsPerMeter * 1000;
+      if (hasPace) {
+        currentTimestampMs += segDistance * paceSecondsPerMeter * 1000;
+      }
     }
 
-    const isoTime = new Date(currentTimestampMs).toISOString();
+    const timeTag = hasPace ? `\n        <time>${new Date(currentTimestampMs).toISOString()}</time>` : '';
 
     // Elevation calculation (interpolated from sampled elevation points if available)
     let eleTag = '';
@@ -80,7 +83,7 @@ export function generateGpxString(
     }
 
     trackPointsXml.push(
-      `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}">${eleTag}\n        <time>${isoTime}</time>\n      </trkpt>`
+      `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}">${eleTag}${timeTag}\n      </trkpt>`
     );
   }
 

@@ -12,10 +12,15 @@ interface ExportModalProps {
 }
 
 const PACE_PRESETS = [
-  { label: 'Easy / Recovery', pace: 6.5, display: '6:30' },
-  { label: 'Daily Base', pace: 5.5, display: '5:30' },
-  { label: 'Tempo Run', pace: 5.0, display: '5:00' },
+  { label: 'Tanpa Pace', pace: 0, display: '--:--' },
   { label: 'Race Pace', pace: 4.25, display: '4:15' },
+  { label: 'Tempo Run', pace: 5.0, display: '5:00' },
+  { label: 'Daily Base', pace: 5.5, display: '5:30' },
+  { label: 'Easy Run', pace: 6.0, display: '6:00' },
+  { label: 'Recovery', pace: 6.5, display: '6:30' },
+  { label: 'Slow Jog', pace: 7.5, display: '7:30' },
+  { label: 'Easy Jog', pace: 8.5, display: '8:30' },
+  { label: 'Pace 9 / Walk', pace: 9.0, display: '9:00' },
 ];
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -33,11 +38,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   if (!isOpen) return null;
 
   // Calculate estimated duration
-  const totalSeconds = totalDistanceKm * (pace * 60);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  const durationText = hours > 0 ? `${hours}j ${minutes}m ${seconds}s` : `${minutes}m ${seconds}s`;
+  const durationText = (!pace || pace <= 0)
+    ? '--:--'
+    : (() => {
+        const totalSeconds = totalDistanceKm * (pace * 60);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = Math.floor(totalSeconds % 60);
+        return hours > 0 ? `${hours}j ${minutes}m ${seconds}s` : `${minutes}m ${seconds}s`;
+      })();
 
   const handleExport = (e: React.FormEvent) => {
     e.preventDefault();

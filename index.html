@@ -5,16 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>RunRoute — Running Route Planner & GPX Exporter</title>
   <meta name="description" content="Aplikasi pembuat rute lari pintar dengan snap-to-road pejalan kaki, profil elevasi realtime, estimasi pace, dan export GPX untuk jam Garmin, Coros, dan Apple Watch.">
+  <meta name="theme-color" content="#06090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./public/favicon.svg">
 
-  <!-- Local Leaflet Map (Hosted 100% on this Server, 0% CDN Dependency) -->
+  <script>
+    window.onerror = function(msg, url, line, col, error) {
+      var err = encodeURIComponent(msg + ' at ' + (url ? url.split('/').pop() : '') + ':' + line);
+      new Image().src = '/log_error?e=' + err;
+      var box = document.getElementById('client-debug-box');
+      if (box) {
+        box.style.display = 'block';
+        box.innerHTML = '⚠️ <strong>Browser JS Error:</strong> ' + msg + ' (Line ' + line + ')';
+      }
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      var msg = e.reason ? (e.reason.message || e.reason) : 'Promise rejection';
+      new Image().src = '/log_error?e=' + encodeURIComponent(msg);
+    });
+  </script>
+
+  <!-- Local Leaflet Map with CDN Fallback -->
   <link rel="stylesheet" href="./vendor/leaflet/leaflet.css" />
   <script src="./vendor/leaflet/leaflet.js"></script>
+  <script>
+    if (typeof L === 'undefined') {
+      document.write('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />');
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"><\\/script>');
+    }
+  </script>
 
   <!-- Application Styles -->
-  <link rel="stylesheet" href="./style.css?v=3">
+  <link rel="stylesheet" href="./style.css?v=20261008_01">
 </head>
 <body>
   <div class="app-viewport">
+    <!-- Browser Error Banner (Auto-hidden unless an unhandled JS error occurs) -->
+    <div id="client-debug-box" style="display:none; position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:999999; background:#dc2626; color:#fff; padding:12px 20px; border-radius:10px; font-weight:600; font-size:13px; box-shadow:0 12px 30px rgba(0,0,0,0.7); max-width:90vw;"></div>
+
     <!-- Map Container -->
     <div id="map" class="map-canvas-container"></div>
 
@@ -71,15 +104,25 @@
             <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
           </span>
           <div>
-            <div id="stat-time" class="stat-value">00:00</div>
+            <div id="stat-time" class="stat-value">--:--</div>
             <div class="stat-label">
               <span>Pace:</span>
               <select id="select-pace" class="pace-select" title="Ubah Target Pace">
+                <option value="0" selected>Tanpa Pace (--:--)</option>
+                <option value="4.0">4:00/km (Fast)</option>
                 <option value="4.25">4:15/km (Race)</option>
+                <option value="4.5">4:30/km (Threshold)</option>
                 <option value="5.0">5:00/km (Tempo)</option>
-                <option value="5.5" selected>5:30/km (Base)</option>
+                <option value="5.5">5:30/km (Base)</option>
                 <option value="6.0">6:00/km (Easy)</option>
                 <option value="6.5">6:30/km (Recovery)</option>
+                <option value="7.0">7:00/km (Slow Run)</option>
+                <option value="7.5">7:30/km (Easy Jog)</option>
+                <option value="8.0">8:00/km (Jog / Walk)</option>
+                <option value="8.5">8:30/km (Slow Jog)</option>
+                <option value="9.0">9:00/km (Pace 9 / Walk)</option>
+                <option value="9.5">9:30/km (Pace 9:30)</option>
+                <option value="10.0">10:00/km (Brisk Walk)</option>
               </select>
             </div>
           </div>
@@ -99,6 +142,11 @@
 
       <!-- Header Actions -->
       <div class="hud-actions">
+        <button id="btn-share-route" class="btn-share-pill" title="Salin Tautan Rute" style="display: none;">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <span>Salin Link</span>
+        </button>
+
         <button id="btn-demo-preset" class="tool-btn-pill" title="Coba Contoh Rute 5K">
           <svg class="ui-icon" style="color: #fbbf24;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>
           <span>Demo 5K</span>
@@ -244,21 +292,41 @@
           <div class="form-group">
             <label>Pilih Target Pace</label>
             <div class="pace-presets-grid">
-              <button type="button" class="pace-chip" data-pace="6.5">
-                <div class="chip-time">6:30</div>
-                <div class="chip-label">Recovery</div>
+              <button type="button" class="pace-chip active" data-pace="0">
+                <div class="chip-time">--:--</div>
+                <div class="chip-label">Tanpa Pace</div>
               </button>
-              <button type="button" class="pace-chip active" data-pace="5.5">
-                <div class="chip-time">5:30</div>
-                <div class="chip-label">Base</div>
+              <button type="button" class="pace-chip" data-pace="4.25">
+                <div class="chip-time">4:15</div>
+                <div class="chip-label">Race</div>
               </button>
               <button type="button" class="pace-chip" data-pace="5.0">
                 <div class="chip-time">5:00</div>
                 <div class="chip-label">Tempo</div>
               </button>
-              <button type="button" class="pace-chip" data-pace="4.25">
-                <div class="chip-time">4:15</div>
-                <div class="chip-label">Race</div>
+              <button type="button" class="pace-chip" data-pace="5.5">
+                <div class="chip-time">5:30</div>
+                <div class="chip-label">Base</div>
+              </button>
+              <button type="button" class="pace-chip" data-pace="6.0">
+                <div class="chip-time">6:00</div>
+                <div class="chip-label">Easy</div>
+              </button>
+              <button type="button" class="pace-chip" data-pace="6.5">
+                <div class="chip-time">6:30</div>
+                <div class="chip-label">Recovery</div>
+              </button>
+              <button type="button" class="pace-chip" data-pace="7.5">
+                <div class="chip-time">7:30</div>
+                <div class="chip-label">Slow Jog</div>
+              </button>
+              <button type="button" class="pace-chip" data-pace="8.5">
+                <div class="chip-time">8:30</div>
+                <div class="chip-label">Easy Jog</div>
+              </button>
+              <button type="button" class="pace-chip" data-pace="9.0">
+                <div class="chip-time">9:00</div>
+                <div class="chip-label">Pace 9</div>
               </button>
             </div>
           </div>
@@ -271,11 +339,22 @@
             </div>
             <div>
               <div class="summary-label">EST. WAKTU</div>
-              <div id="modal-summary-time" class="summary-val cyan">00:00</div>
+              <div id="modal-summary-time" class="summary-val cyan">--:--</div>
             </div>
             <div>
               <div class="summary-label">ELEVASI</div>
               <div id="modal-summary-elevation" class="summary-val orange">+0m</div>
+            </div>
+          </div>
+
+          <!-- KM Splits Table -->
+          <div class="modal-splits-section">
+            <div class="splits-header-toggle">
+              <span>Estimasi KM Splits</span>
+              <span id="splits-summary-pace" style="color: #38bdf8;">--:-- /km</span>
+            </div>
+            <div id="modal-splits-container" class="splits-scroll-area">
+              <div class="splits-empty-hint">Pilih target pace untuk melihat estimasi split tiap kilometer.</div>
             </div>
           </div>
 
@@ -298,6 +377,6 @@
   </div>
 
   <!-- Application Logic -->
-  <script src="./app.js?v=3"></script>
+  <script src="./app.js?v=20261008_01"></script>
 </body>
 </html>

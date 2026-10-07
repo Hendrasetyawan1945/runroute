@@ -1,0 +1,19 @@
+{
+  "name": "RunRoute — Running Route Planner & GPX Exporter",
+  "short_name": "RunRoute",
+  "description": "Aplikasi pembuat rute lari pintar dengan snap-to-road, profil elevasi, dan export GPX.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#06090e",
+  "theme_color": "#06090e",
+  "icons": [
+    {
+      "src": "./public/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

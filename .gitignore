@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Server & environment configs
+.user.ini
+.well-known
+404.html
+502.html

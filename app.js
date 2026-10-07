@@ -10,37 +10,55 @@ const state = {
   history: [],        // [{ waypoints, routeCoords }]
   historyIndex: -1,
   routingMode: 'follow-roads', // 'follow-roads' | 'straight-line'
-  mapLayer: 'streets',    // 'streets' | 'osm' | 'topo'
-  targetPace: 5.5,    // min/km (5:30/km)
+  mapLayer: 'googleRoads',    // 'googleRoads' | 'osm' | 'googleSat' | 'carto'
+  targetPace: 0,              // 0 = Tanpa Pace (default)
   elevationStats: null,
 };
 
 const STORAGE_KEY = 'runroute_v2_state';
 
-// Tile Layers Configuration (100% Free, Full CORS, No API Keys)
+// Tile Layers Configuration (100% Free, High Reliability, Ultra Fast in Indonesia)
 const TILE_PROVIDERS = {
-  streets: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  googleRoads: {
+    name: 'Google Maps (Jalan)',
+    url: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
     options: {
-      maxZoom: 19,
-      attribution: '&copy; Esri, HERE, Garmin, USGS, OpenStreetMap',
+      maxZoom: 20,
+      subdomains: ['0', '1', '2', '3'],
+      attribution: '&copy; Google Maps',
     },
   },
   osm: {
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    name: 'OpenStreetMap',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     options: {
       maxZoom: 19,
+      subdomains: ['a', 'b', 'c'],
       attribution: '&copy; OpenStreetMap contributors',
     },
   },
-  topo: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+  googleSat: {
+    name: 'Google Satelit Hybrid',
+    url: 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    options: {
+      maxZoom: 20,
+      subdomains: ['0', '1', '2', '3'],
+      attribution: '&copy; Google Maps Satellite',
+    },
+  },
+  carto: {
+    name: 'Carto Voyager',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     options: {
       maxZoom: 19,
-      attribution: '&copy; Esri, Intermap, OpenStreetMap',
+      subdomains: ['a', 'b', 'c', 'd'],
+      attribution: '&copy; CARTO &copy; OpenStreetMap',
     },
   },
 };
+
+// Telemetry ping
+try { new Image().src = '/log_status?s=app_js_running_L=' + (typeof L); } catch (e) {}
 
 // Initialize Leaflet Map
 const defaultCenter = [-0.9471, 100.3543]; // Padang / Indonesia
@@ -50,16 +68,10 @@ const map = L.map('map', {
   zoomControl: false,
 });
 
+try { new Image().src = '/log_status?s=map_created_ok'; } catch (e) {}
+
 // Custom zoom control in bottom-right
-L.control.zoom({ position: 'bottom-right' }).addTo(map);
-
-let currentTileLayer = L.tileLayer(TILE_PROVIDERS.streets.url, TILE_PROVIDERS.streets.options).addTo(map);
-
-// Invalidate size on start to ensure tiles fill screen immediately
-map.invalidateSize();
-setTimeout(() => map.invalidateSize(), 150);
-setTimeout(() => map.invalidateSize(), 600);
-window.addEventListener('resize', () => map.invalidateSize());
+L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 // Route Polylines
 const casingPolyline = L.polyline([], {
@@ -78,9 +90,61 @@ const mainPolyline = L.polyline([], {
   lineJoin: 'round',
 }).addTo(map);
 
-// Markers Layer Group
+// Markers Layer Groups
 const markersGroup = L.layerGroup().addTo(map);
+const kmMarkersGroup = L.layerGroup().addTo(map);
 let scrubberMarker = null;
+
+// Tile Layer Management
+let currentTileLayer = null;
+let consecutiveTileErrors = 0;
+let loggedFirstTile = false;
+
+function setTileLayer(layerKey) {
+  const provider = TILE_PROVIDERS[layerKey] || TILE_PROVIDERS.googleRoads;
+  if (currentTileLayer) {
+    map.removeLayer(currentTileLayer);
+  }
+  state.mapLayer = layerKey;
+  try { new Image().src = '/log_status?s=setting_layer_' + layerKey; } catch (e) {}
+  
+  // Standard tile layer without crossOrigin restrictions (loads 100% reliably like native <img>)
+  currentTileLayer = L.tileLayer(provider.url, provider.options).addTo(map);
+
+  // If tiles fail (e.g., adblocker blocks mt*.google.com), auto-fallback to OpenStreetMap
+  currentTileLayer.on('tileerror', (err) => {
+    consecutiveTileErrors++;
+    try { new Image().src = '/log_status?s=tile_err_' + layerKey; } catch (e) {}
+    if (consecutiveTileErrors >= 3 && state.mapLayer === 'googleRoads') {
+      console.warn('Google Maps tiles blocked by browser/adblocker, switching to OpenStreetMap');
+      consecutiveTileErrors = 0;
+      setTileLayer('osm');
+    }
+  });
+
+  currentTileLayer.on('tileload', () => {
+    consecutiveTileErrors = 0;
+    if (!loggedFirstTile) {
+      loggedFirstTile = true;
+      try { new Image().src = '/log_status?s=first_tile_loaded_' + layerKey; } catch (e) {}
+    }
+  });
+
+  if (casingPolyline) casingPolyline.bringToFront();
+  if (mainPolyline) mainPolyline.bringToFront();
+}
+
+// Initial tile layer: Google Maps Roads
+setTileLayer('googleRoads');
+
+// Invalidate size on start to ensure tiles fill screen immediately
+map.invalidateSize();
+setTimeout(() => map.invalidateSize(), 100);
+setTimeout(() => map.invalidateSize(), 300);
+setTimeout(() => map.invalidateSize(), 800);
+setTimeout(() => map.invalidateSize(), 1500);
+window.addEventListener('resize', () => map.invalidateSize());
+window.addEventListener('load', () => map.invalidateSize());
 
 // Haversine Distance (Meters)
 function getDistanceMeters(c1, c2) {
@@ -108,33 +172,98 @@ function calculateTotalDistance(coords) {
   return total;
 }
 
-// OSRM Pedestrian Routing Service
+// Check if an OSRM route is taking an unnecessary multi-block detour or wandering away
+function isRouteDetour(from, to, coords) {
+  if (!coords || coords.length < 2) return true;
+
+  const straightDist = getDistanceMeters(from, to);
+  const routeDist = calculateTotalDistance(coords);
+
+  // 1. Short crossing check (< 50m):
+  // When straight line is < 50m, any route exceeding straightDist + 40m or 2.0x is an unwanted crosswalk detour
+  if (straightDist < 50) {
+    if (routeDist > Math.max(straightDist * 2.0, straightDist + 40)) {
+      return true;
+    }
+    return false;
+  }
+
+  // 2. Wandering far away check:
+  // A road curve or hillside bend can curve slightly, but a multi-block detour travels far away to other streets!
+  const distsToTarget = coords.map((c) => getDistanceMeters(c, to));
+  const maxDistToTarget = Math.max(...distsToTarget);
+  // Allowed buffer: for a curved road, max distance to target rarely exceeds 1.55x or straightDist + 100m.
+  // Real block detours wander 200m - 1000m+ away!
+  if (maxDistToTarget > Math.max(straightDist + 100, straightDist * 1.55)) {
+    return true;
+  }
+
+  // 3. Excessive length check (multi-block loops):
+  // Natural winding roads have route/straight ratio between 1.1x and 1.8x.
+  // Block detours have ratio 2.0x - 15x!
+  if (
+    (straightDist < 120 && routeDist > straightDist * 2.2 && (routeDist - straightDist) > 80) ||
+    (straightDist < 350 && routeDist > straightDist * 2.0 && (routeDist - straightDist) > 140) ||
+    (routeDist > straightDist * 1.9 && (routeDist - straightDist) > 220)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+// Fetch raw route from OSRM pedestrian API
+async function fetchOsrmRoute(origin, dest) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const url = `https://router.project-osrm.org/route/v1/foot/${origin[1]},${origin[0]};${dest[1]},${dest[0]}?overview=full&geometries=geojson`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.code === 'Ok' && data.routes && data.routes[0]) {
+      return data.routes[0].geometry.coordinates.map((c) => [c[1], c[0]]);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+// OSRM Pedestrian Routing Service with One-Way Bypass & Runner-Intent Enforcement
 async function getRouteSegment(from, to, mode = 'follow-roads') {
   if (mode === 'straight-line') {
     return [from, to];
   }
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2500);
-
-    // OSRM takes {lng},{lat};{lng},{lat}
-    const url = `https://router.project-osrm.org/route/v1/foot/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (!res.ok) return [from, to];
-
-    const data = await res.json();
-    if (data.code === 'Ok' && data.routes && data.routes[0]) {
-      // Convert GeoJSON [lng, lat] to Leaflet [lat, lng]
-      return data.routes[0].geometry.coordinates.map((c) => [c[1], c[0]]);
-    }
-  } catch {
-    // Fallback to straight line
+  const straightDist = getDistanceMeters(from, to);
+  if (straightDist < 3) {
     return [from, to];
   }
 
+  // 1. Primary forward query: from -> to
+  const forwardCoords = await fetchOsrmRoute(from, to);
+
+  // If forward route is clean and directly follows the street without looping away:
+  if (forwardCoords && forwardCoords.length >= 2 && !isRouteDetour(from, to, forwardCoords)) {
+    return forwardCoords;
+  }
+
+  // 2. If forward route detours (frequently because of one-way traffic rules):
+  // Query in REVERSE (to -> from). If reverse direction follows the street cleanly, flip coordinates!
+  // This allows runners to run in BOTH directions on any street, ignoring vehicular one-way restrictions.
+  const reverseCoords = await fetchOsrmRoute(to, from);
+  if (reverseCoords && reverseCoords.length >= 2 && !isRouteDetour(to, from, reverseCoords)) {
+    console.log(`[RunRoute] Snap jalan satu arah berlawanan (${Math.round(straightDist)}m) tanpa memutar blok.`);
+    return [...reverseCoords].reverse();
+  }
+
+  // 3. If neither forward nor reverse can follow the road without detouring:
+  // (e.g. pedestrian malls, closed streets, median barriers, or contradictory restrictions)
+  // The runner connects directly to destination in a straight line without ANY block looping!
+  console.log(`[RunRoute] Mengabaikan arah jalan memutar (${Math.round(straightDist)}m). Berlari lurus ke tujuan.`);
   return [from, to];
 }
 
@@ -211,6 +340,79 @@ async function fetchElevation(coords) {
   }
 }
 
+// Render Kilometer Milestone Badges (Every 1000m along the route)
+function renderKmMilestones() {
+  kmMarkersGroup.clearLayers();
+  if (state.routeCoords.length < 2) return;
+
+  let cumDist = 0;
+  let nextKm = 1;
+
+  for (let i = 1; i < state.routeCoords.length; i++) {
+    const pPrev = state.routeCoords[i - 1];
+    const pCurr = state.routeCoords[i];
+    const segDist = getDistanceMeters(pPrev, pCurr);
+
+    while (cumDist + segDist >= nextKm * 1000) {
+      const needed = (nextKm * 1000) - cumDist;
+      const ratio = segDist > 0 ? needed / segDist : 0;
+      const lat = pPrev[0] + (pCurr[0] - pPrev[0]) * ratio;
+      const lng = pPrev[1] + (pCurr[1] - pPrev[1]) * ratio;
+
+      const kmIcon = L.divIcon({
+        html: `<div class="custom-km-badge" title="Kilometer ${nextKm}"><span class="km-val">${nextKm}</span><span class="km-lbl">km</span></div>`,
+        className: '',
+        iconSize: [40, 24],
+        iconAnchor: [20, 12],
+      });
+
+      const kmMarker = L.marker([lat, lng], { icon: kmIcon, zIndexOffset: 300 }).addTo(kmMarkersGroup);
+      kmMarker.bindPopup(`<div style="font-size:12px; font-weight:700; text-align:center; padding:4px;">Kilometer ${nextKm}<br><span style="color:#10b981; font-weight:600;">Jarak: ${nextKm}.00 km</span></div>`);
+      nextKm++;
+    }
+
+    cumDist += segDist;
+  }
+}
+
+// Remove Individual Waypoint and Recalculate
+async function removeWaypoint(idx) {
+  if (idx < 0 || idx >= state.waypoints.length) return;
+  state.waypoints.splice(idx, 1);
+
+  if (state.waypoints.length === 0) {
+    handleClear();
+    return;
+  }
+
+  if (state.waypoints.length === 1) {
+    state.routeCoords = [[state.waypoints[0].lat, state.waypoints[0].lng]];
+    state.elevationStats = null;
+    recordHistory();
+    renderMap();
+    return;
+  }
+
+  // Rebuild remaining route segments
+  let coords = [[state.waypoints[0].lat, state.waypoints[0].lng]];
+  for (let i = 0; i < state.waypoints.length - 1; i++) {
+    const fromWp = state.waypoints[i];
+    const toWp = state.waypoints[i + 1];
+    const mode = toWp.isManual ? 'straight-line' : state.routingMode;
+    const seg = await getRouteSegment([fromWp.lat, fromWp.lng], [toWp.lat, toWp.lng], mode);
+    coords = [...coords, ...seg.slice(1)];
+  }
+
+  state.routeCoords = coords;
+  recordHistory();
+  renderMap();
+
+  fetchElevation(state.routeCoords).then((res) => {
+    state.elevationStats = res;
+    updateMetricsUI();
+  });
+}
+
 // Update Map Renderings
 function renderMap() {
   casingPolyline.setLatLngs(state.routeCoords);
@@ -219,16 +421,16 @@ function renderMap() {
   markersGroup.clearLayers();
 
   state.waypoints.forEach((wp, idx) => {
-    let pinHtml = `<div class="custom-runner-pin pin-waypoint"></div>`;
-    let iconSize = [12, 12];
-    let iconAnchor = [6, 6];
+    let pinHtml = `<div class="custom-runner-pin pin-waypoint" title="Klik titik untuk opsi"></div>`;
+    let iconSize = [14, 14];
+    let iconAnchor = [7, 7];
 
     if (idx === 0) {
-      pinHtml = `<div class="custom-runner-pin pin-start">S</div>`;
+      pinHtml = `<div class="custom-runner-pin pin-start" title="Start (Titik Awal)">S</div>`;
       iconSize = [28, 28];
       iconAnchor = [14, 14];
     } else if (idx === state.waypoints.length - 1 && state.waypoints.length > 1) {
-      pinHtml = `<div class="custom-runner-pin pin-finish">F</div>`;
+      pinHtml = `<div class="custom-runner-pin pin-finish" title="Finish (Titik Akhir)">F</div>`;
       iconSize = [28, 28];
       iconAnchor = [14, 14];
     }
@@ -240,9 +442,31 @@ function renderMap() {
       iconAnchor: iconAnchor,
     });
 
-    L.marker([wp.lat, wp.lng], { icon }).addTo(markersGroup);
+    const marker = L.marker([wp.lat, wp.lng], { icon, zIndexOffset: 100 }).addTo(markersGroup);
+
+    // Click popup to delete waypoint
+    if (state.waypoints.length > 1) {
+      const label = idx === 0 ? 'Titik Awal (Start)' : (idx === state.waypoints.length - 1 ? 'Titik Akhir (Finish)' : `Titik Belokan #${idx + 1}`);
+      const popupDiv = document.createElement('div');
+      popupDiv.className = 'wp-popup-content';
+      popupDiv.innerHTML = `
+        <div class="wp-popup-title">${label}</div>
+        <button type="button" class="btn-delete-wp">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          Hapus Titik Ini
+        </button>
+      `;
+      const btnDel = popupDiv.querySelector('.btn-delete-wp');
+      btnDel.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        map.closePopup();
+        removeWaypoint(idx);
+      });
+      marker.bindPopup(popupDiv, { offset: [0, -6] });
+    }
   });
 
+  renderKmMilestones();
   updateMetricsUI();
 }
 
@@ -254,13 +478,16 @@ function updateMetricsUI() {
   document.getElementById('stat-distance').textContent = `${km.toFixed(2)} km`;
 
   // Duration
-  const totalSeconds = km * (state.targetPace * 60);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  const timeStr = hours > 0 ? `${hours}j ${minutes}m` : `${minutes}m ${seconds}s`;
-
-  document.getElementById('stat-time').textContent = km > 0 ? timeStr : '00:00';
+  if (!state.targetPace || state.targetPace <= 0) {
+    document.getElementById('stat-time').textContent = '--:--';
+  } else {
+    const totalSeconds = km * (state.targetPace * 60);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    const timeStr = hours > 0 ? `${hours}j ${minutes}m` : `${minutes}m ${seconds}s`;
+    document.getElementById('stat-time').textContent = km > 0 ? timeStr : '00:00';
+  }
 
   // Elevation
   const elevGain = state.elevationStats ? state.elevationStats.gain : 0;
@@ -277,6 +504,11 @@ function updateMetricsUI() {
   document.getElementById('btn-clear').disabled = !hasPoints;
   document.getElementById('btn-undo').disabled = state.historyIndex < 0;
   document.getElementById('btn-redo').disabled = state.historyIndex >= state.history.length - 1;
+
+  const btnShare = document.getElementById('btn-share-route');
+  if (btnShare) {
+    btnShare.style.display = hasRoute ? 'inline-flex' : 'none';
+  }
 
   document.getElementById('btn-fit-route').style.display = hasRoute ? 'flex' : 'none';
   document.getElementById('guide-toast').style.display = hasPoints ? 'none' : 'block';
@@ -396,8 +628,9 @@ function recordHistory() {
 }
 
 // Add Waypoint
-async function addWaypoint(latlng) {
-  const wp = { lat: latlng.lat, lng: latlng.lng, isManual: state.routingMode === 'straight-line' };
+async function addWaypoint(latlng, overrideMode = null) {
+  const activeMode = overrideMode || state.routingMode;
+  const wp = { lat: latlng.lat, lng: latlng.lng, isManual: activeMode === 'straight-line' };
 
   if (state.waypoints.length === 0) {
     state.waypoints = [wp];
@@ -408,7 +641,7 @@ async function addWaypoint(latlng) {
   }
 
   const lastWp = state.waypoints[state.waypoints.length - 1];
-  const segment = await getRouteSegment([lastWp.lat, lastWp.lng], [wp.lat, wp.lng], state.routingMode);
+  const segment = await getRouteSegment([lastWp.lat, lastWp.lng], [wp.lat, wp.lng], activeMode);
 
   state.waypoints.push(wp);
   // Avoid duplicate joint coordinate
@@ -424,9 +657,10 @@ async function addWaypoint(latlng) {
   });
 }
 
-// Map Click Listener
+// Map Click Listener (Supports Shift+Click for instant Straight Line segment)
 map.on('click', (e) => {
-  addWaypoint(e.latlng);
+  const isShiftOrAlt = Boolean(e.originalEvent && (e.originalEvent.shiftKey || e.originalEvent.altKey));
+  addWaypoint(e.latlng, isShiftOrAlt ? 'straight-line' : null);
 });
 
 // Action: Undo
@@ -525,7 +759,7 @@ async function handleReverse() {
   });
 }
 
-// Action: Reset
+// Action: Reset (Clean Route and URL)
 function handleClear() {
   state.waypoints = [];
   state.routeCoords = [];
@@ -533,7 +767,169 @@ function handleClear() {
   state.historyIndex = -1;
   state.elevationStats = null;
   localStorage.removeItem(STORAGE_KEY);
+
+  if (window.location.hash) {
+    history.replaceState(null, '', window.location.pathname);
+  }
+
+  if (kmMarkersGroup) kmMarkersGroup.clearLayers();
+  if (markersGroup) markersGroup.clearLayers();
+  if (casingPolyline) casingPolyline.setLatLngs([]);
+  if (mainPolyline) mainPolyline.setLatLngs([]);
+
+  const dock = document.getElementById('elevation-dock');
+  if (dock) dock.style.display = 'none';
+  const fillPath = document.getElementById('svg-fill-path');
+  if (fillPath) fillPath.setAttribute('d', '');
+  const strokePath = document.getElementById('svg-stroke-path');
+  if (strokePath) strokePath.setAttribute('d', '');
+
   renderMap();
+}
+
+// Generate Shareable URL
+function getShareUrl() {
+  if (state.waypoints.length === 0) return window.location.href.split('#')[0];
+  const wps = state.waypoints.map(w => `${w.lat.toFixed(5)},${w.lng.toFixed(5)}${w.isManual ? ',1' : ''}`).join(';');
+  let hash = `r=${wps}`;
+  if (state.targetPace && state.targetPace > 0) {
+    hash += `&p=${state.targetPace}`;
+  }
+  return `${window.location.origin}${window.location.pathname}#${hash}`;
+}
+
+// Handle Share Route Button Click
+async function handleShareRoute() {
+  if (state.waypoints.length < 2) return;
+  const shareUrl = getShareUrl();
+  window.history.replaceState(null, '', shareUrl);
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(shareUrl);
+    } else {
+      const input = document.createElement('input');
+      input.value = shareUrl;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+    }
+  } catch (e) {
+    prompt('Salin link rute ini:', shareUrl);
+    return;
+  }
+
+  const toast = document.getElementById('guide-toast');
+  if (toast) {
+    const origText = '💡 Klik jalan di peta untuk mulai membuat rute lari Anda!';
+    toast.textContent = '🔗 Tautan rute berhasil disalin ke clipboard!';
+    toast.style.borderColor = '#06b6d4';
+    toast.style.color = '#38bdf8';
+    toast.style.display = 'block';
+    setTimeout(() => {
+      toast.textContent = origText;
+      toast.style.borderColor = '';
+      toast.style.color = '';
+      if (state.waypoints.length > 0) {
+        toast.style.display = 'none';
+      }
+    }, 2800);
+  }
+}
+
+// Render KM Splits in Export Modal
+function renderModalSplits() {
+  const container = document.getElementById('modal-splits-container');
+  const summaryPace = document.getElementById('splits-summary-pace');
+  if (!container) return;
+
+  if (!state.targetPace || state.targetPace <= 0) {
+    if (summaryPace) summaryPace.textContent = 'Tanpa Pace';
+    container.innerHTML = '<div class="splits-empty-hint">Pilih salah satu target pace di atas untuk melihat estimasi split per kilometer.</div>';
+    return;
+  }
+
+  const paceMin = state.targetPace;
+  const paceSec = paceMin * 60;
+  const paceMinPart = Math.floor(paceMin);
+  const paceSecPart = Math.round((paceMin - paceMinPart) * 60);
+  const paceStr = `${paceMinPart}:${paceSecPart.toString().padStart(2, '0')}`;
+  if (summaryPace) summaryPace.textContent = `${paceStr} /km`;
+
+  const totalMeters = calculateTotalDistance(state.routeCoords);
+  const totalKm = totalMeters / 1000;
+  if (totalKm <= 0) {
+    container.innerHTML = '<div class="splits-empty-hint">Rute belum memiliki jarak.</div>';
+    return;
+  }
+
+  const fullKms = Math.floor(totalKm);
+  const pts = state.elevationStats ? state.elevationStats.points : [];
+
+  let rowsHtml = '';
+  for (let k = 1; k <= fullKms; k++) {
+    const cumSeconds = k * paceSec;
+    const hrs = Math.floor(cumSeconds / 3600);
+    const mins = Math.floor((cumSeconds % 3600) / 60);
+    const secs = Math.floor(cumSeconds % 60);
+    const timeStr = hrs > 0 
+      ? `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      : `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+    let eleInfo = '--';
+    if (pts.length > 0) {
+      const p = pts.find(pt => pt.distanceKm >= k) || pts[pts.length - 1];
+      eleInfo = `${p.elevationM}m`;
+    }
+
+    rowsHtml += `
+      <tr>
+        <td style="font-weight:600;">KM ${k}</td>
+        <td class="split-time">${timeStr}</td>
+        <td style="color:#10b981;">+${paceStr}</td>
+        <td style="color:#f97316;">${eleInfo}</td>
+      </tr>
+    `;
+  }
+
+  if (totalKm > fullKms) {
+    const finalSeconds = totalKm * paceSec;
+    const hrs = Math.floor(finalSeconds / 3600);
+    const mins = Math.floor((finalSeconds % 3600) / 60);
+    const secs = Math.floor(finalSeconds % 60);
+    const timeStr = hrs > 0 
+      ? `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      : `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+    let eleInfo = '--';
+    if (pts.length > 0) {
+      eleInfo = `${pts[pts.length - 1].elevationM}m`;
+    }
+
+    rowsHtml += `
+      <tr style="background: rgba(16, 185, 129, 0.08); font-weight:700;">
+        <td>Finish (${totalKm.toFixed(2)} km)</td>
+        <td class="split-time" style="color:#34d399;">${timeStr}</td>
+        <td style="color:#10b981;">Total</td>
+        <td style="color:#f97316;">${eleInfo}</td>
+      </tr>
+    `;
+  }
+
+  container.innerHTML = `
+    <table class="splits-table">
+      <thead>
+        <tr>
+          <th>Split</th>
+          <th>Waktu Total</th>
+          <th>Lap Pace</th>
+          <th>Elevasi</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
 }
 
 // Action: Demo Preset (Padang Beach Waterfront 5K)
@@ -570,9 +966,10 @@ async function handleDemoPreset() {
 
 // GPX 1.1 Exporter
 function generateGpxXml(name, desc, paceMinutes) {
+  const hasPace = paceMinutes && paceMinutes > 0;
   const now = new Date();
   const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 6, 0, 0);
-  const paceSecondsPerMeter = (paceMinutes * 60) / 1000;
+  const paceSecondsPerMeter = hasPace ? (paceMinutes * 60) / 1000 : 0;
 
   let currentTimestampMs = startTime.getTime();
   let cumulativeDist = 0;
@@ -583,10 +980,12 @@ function generateGpxXml(name, desc, paceMinutes) {
     if (idx > 0) {
       const segDist = getDistanceMeters(state.routeCoords[idx - 1], coord);
       cumulativeDist += segDist;
-      currentTimestampMs += segDist * paceSecondsPerMeter * 1000;
+      if (hasPace) {
+        currentTimestampMs += segDist * paceSecondsPerMeter * 1000;
+      }
     }
 
-    const isoTime = new Date(currentTimestampMs).toISOString();
+    const timeTag = hasPace ? `\n        <time>${new Date(currentTimestampMs).toISOString()}</time>` : '';
 
     // Elevation lookup
     let eleTag = '';
@@ -603,7 +1002,7 @@ function generateGpxXml(name, desc, paceMinutes) {
       eleTag = `\n        <ele>${eleVal.toFixed(1)}</ele>`;
     }
 
-    return `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}">${eleTag}\n        <time>${isoTime}</time>\n      </trkpt>`;
+    return `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}">${eleTag}${timeTag}\n      </trkpt>`;
   });
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -660,6 +1059,11 @@ document.getElementById('btn-reverse').addEventListener('click', handleReverse);
 document.getElementById('btn-clear').addEventListener('click', handleClear);
 document.getElementById('btn-demo-preset').addEventListener('click', handleDemoPreset);
 
+const btnShareRoute = document.getElementById('btn-share-route');
+if (btnShareRoute) {
+  btnShareRoute.addEventListener('click', handleShareRoute);
+}
+
 // Routing Mode Toggle
 const btnToggleMode = document.getElementById('btn-toggle-mode');
 btnToggleMode.addEventListener('click', () => {
@@ -676,18 +1080,26 @@ btnToggleMode.addEventListener('click', () => {
   }
 });
 
-// Map Layer Switcher
+// Map Layer Switcher (Cycles: Google Roads -> OpenStreetMap -> Google Satelit -> Carto)
+const LAYER_KEYS = ['googleRoads', 'osm', 'googleSat', 'carto'];
 document.getElementById('btn-toggle-layer').addEventListener('click', () => {
-  map.removeLayer(currentTileLayer);
-  if (state.mapLayer === 'streets') {
-    state.mapLayer = 'osm';
-    currentTileLayer = L.tileLayer(TILE_PROVIDERS.osm.url, TILE_PROVIDERS.osm.options).addTo(map);
-  } else if (state.mapLayer === 'osm') {
-    state.mapLayer = 'topo';
-    currentTileLayer = L.tileLayer(TILE_PROVIDERS.topo.url, TILE_PROVIDERS.topo.options).addTo(map);
-  } else {
-    state.mapLayer = 'streets';
-    currentTileLayer = L.tileLayer(TILE_PROVIDERS.streets.url, TILE_PROVIDERS.streets.options).addTo(map);
+  const currentIndex = LAYER_KEYS.indexOf(state.mapLayer);
+  const nextIndex = (currentIndex + 1) % LAYER_KEYS.length;
+  const nextKey = LAYER_KEYS[nextIndex];
+  setTileLayer(nextKey);
+
+  // Show temporary toast notification
+  const toast = document.getElementById('guide-toast');
+  if (toast) {
+    const origText = '💡 Klik jalan di peta untuk mulai membuat rute lari Anda!';
+    toast.textContent = `🗺️ Tampilan Peta: ${TILE_PROVIDERS[nextKey].name}`;
+    toast.style.borderColor = '#10b981';
+    toast.style.color = '#10b981';
+    setTimeout(() => {
+      toast.textContent = origText;
+      toast.style.borderColor = '';
+      toast.style.color = '';
+    }, 2000);
   }
 });
 
@@ -745,14 +1157,31 @@ document.getElementById('select-pace').addEventListener('change', (e) => {
 const modal = document.getElementById('export-modal');
 document.getElementById('btn-export-gpx').addEventListener('click', () => {
   const km = (calculateTotalDistance(state.routeCoords) / 1000).toFixed(2);
-  const totalSeconds = km * (state.targetPace * 60);
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = Math.floor(totalSeconds % 60);
+  let timeDisplay = '--:--';
+  if (state.targetPace && state.targetPace > 0) {
+    const totalSeconds = km * (state.targetPace * 60);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = Math.floor(totalSeconds % 60);
+    timeDisplay = `${mins}m ${secs}s`;
+  }
 
   document.getElementById('modal-summary-distance').textContent = `${km} km`;
-  document.getElementById('modal-summary-time').textContent = `${mins}m ${secs}s`;
+  document.getElementById('modal-summary-time').textContent = timeDisplay;
   document.getElementById('modal-summary-elevation').textContent = `+${state.elevationStats ? state.elevationStats.gain : 0}m`;
 
+  // Sync active chip with current target pace
+  document.querySelectorAll('.pace-chip').forEach((c) => {
+    const chipPace = parseFloat(c.dataset.pace);
+    if ((!state.targetPace || state.targetPace === 0) && chipPace === 0) {
+      c.classList.add('active');
+    } else if (state.targetPace > 0 && Math.abs(chipPace - state.targetPace) < 0.05) {
+      c.classList.add('active');
+    } else {
+      c.classList.remove('active');
+    }
+  });
+
+  renderModalSplits();
   modal.style.display = 'flex';
 });
 
@@ -765,8 +1194,20 @@ document.querySelectorAll('.pace-chip').forEach((chip) => {
     document.querySelectorAll('.pace-chip').forEach((c) => c.classList.remove('active'));
     chip.classList.add('active');
     state.targetPace = parseFloat(chip.dataset.pace);
-    document.getElementById('select-pace').value = state.targetPace;
+    document.getElementById('select-pace').value = state.targetPace || 0;
     updateMetricsUI();
+
+    const km = (calculateTotalDistance(state.routeCoords) / 1000).toFixed(2);
+    if (!state.targetPace || state.targetPace <= 0) {
+      document.getElementById('modal-summary-time').textContent = '--:--';
+    } else {
+      const totalSeconds = km * (state.targetPace * 60);
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = Math.floor(totalSeconds % 60);
+      document.getElementById('modal-summary-time').textContent = `${mins}m ${secs}s`;
+    }
+
+    renderModalSplits();
   });
 });
 
@@ -805,40 +1246,130 @@ document.getElementById('btn-collapse-elev').addEventListener('click', () => {
   }
 });
 
-// Load saved state from LocalStorage on mount
-try {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    const parsed = JSON.parse(saved);
-    if (parsed.waypoints && parsed.waypoints.length > 0) {
-      state.waypoints = parsed.waypoints;
-      state.routeCoords = parsed.routeCoords;
-      state.targetPace = parsed.targetPace || 5.5;
-      document.getElementById('select-pace').value = state.targetPace;
-      state.history = [{ waypoints: [...state.waypoints], routeCoords: [...state.routeCoords] }];
-      state.historyIndex = 0;
+// Load Route from URL Hash (#r=lat,lng,isManual;...)
+async function loadFromUrlHash() {
+  const hash = window.location.hash;
+  if (!hash || !hash.includes('r=')) return false;
 
-      renderMap();
+  try {
+    const cleanHash = hash.startsWith('#') ? hash.slice(1) : hash;
+    const params = new URLSearchParams(cleanHash);
+    const rStr = params.get('r');
+    const pStr = params.get('p');
+    if (!rStr) return false;
 
-      if (state.routeCoords.length > 1) {
-        map.fitBounds(L.latLngBounds(state.routeCoords), { padding: [80, 80] });
+    if (pStr) {
+      state.targetPace = parseFloat(pStr) || 0;
+      const sel = document.getElementById('select-pace');
+      if (sel) sel.value = state.targetPace || 0;
+    }
+
+    const pairs = rStr.split(';');
+    const parsedWps = [];
+    for (const p of pairs) {
+      const parts = p.split(',');
+      if (parts.length >= 2) {
+        const lat = parseFloat(parts[0]);
+        const lng = parseFloat(parts[1]);
+        const isManual = parts[2] === '1';
+        if (!isNaN(lat) && !isNaN(lng)) {
+          parsedWps.push({ lat, lng, isManual });
+        }
       }
+    }
 
-      fetchElevation(state.routeCoords).then((res) => {
-        state.elevationStats = res;
-        updateMetricsUI();
-      });
+    if (parsedWps.length === 0) return false;
+
+    state.waypoints = parsedWps;
+    if (parsedWps.length === 1) {
+      state.routeCoords = [[parsedWps[0].lat, parsedWps[0].lng]];
+    } else {
+      let coords = [[parsedWps[0].lat, parsedWps[0].lng]];
+      for (let i = 0; i < parsedWps.length - 1; i++) {
+        const from = [parsedWps[i].lat, parsedWps[i].lng];
+        const to = [parsedWps[i + 1].lat, parsedWps[i + 1].lng];
+        const mode = parsedWps[i + 1].isManual ? 'straight-line' : state.routingMode;
+        const seg = await getRouteSegment(from, to, mode);
+        coords = [...coords, ...seg.slice(1)];
+      }
+      state.routeCoords = coords;
+    }
+
+    state.history = [{ waypoints: [...state.waypoints], routeCoords: [...state.routeCoords] }];
+    state.historyIndex = 0;
+    renderMap();
+
+    if (state.routeCoords.length > 1) {
+      map.fitBounds(L.latLngBounds(state.routeCoords), { padding: [80, 80] });
+    }
+
+    fetchElevation(state.routeCoords).then((res) => {
+      state.elevationStats = res;
+      updateMetricsUI();
+    });
+
+    const toast = document.getElementById('guide-toast');
+    if (toast) {
+      toast.textContent = '📍 Rute berhasil dimuat dari tautan URL!';
+      toast.style.borderColor = '#10b981';
+      toast.style.color = '#10b981';
+      toast.style.display = 'block';
+      setTimeout(() => {
+        if (state.waypoints.length > 0) toast.style.display = 'none';
+      }, 3500);
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Gagal memuat rute dari URL:', err);
+    return false;
+  }
+}
+
+// Load saved state from LocalStorage on mount
+function loadLocalStorage() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.waypoints && parsed.waypoints.length > 0) {
+        state.waypoints = parsed.waypoints;
+        state.routeCoords = parsed.routeCoords;
+        state.targetPace = parsed.targetPace !== undefined ? parsed.targetPace : 0;
+        document.getElementById('select-pace').value = state.targetPace || 0;
+        state.history = [{ waypoints: [...state.waypoints], routeCoords: [...state.routeCoords] }];
+        state.historyIndex = 0;
+
+        renderMap();
+
+        if (state.routeCoords.length > 1) {
+          map.fitBounds(L.latLngBounds(state.routeCoords), { padding: [80, 80] });
+        }
+
+        fetchElevation(state.routeCoords).then((res) => {
+          state.elevationStats = res;
+          updateMetricsUI();
+        });
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+// Startup sequence: Prioritize URL Hash -> LocalStorage -> Geolocation
+(async function initStartup() {
+  const fromUrl = await loadFromUrlHash();
+  if (!fromUrl) {
+    const fromStorage = loadLocalStorage();
+    if (!fromStorage && state.waypoints.length === 0 && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+        },
+        () => {},
+        { timeout: 4000 }
+      );
     }
   }
-} catch {}
-
-// If no saved route, attempt user geolocate or stay at default Padang
-if (state.waypoints.length === 0 && navigator.geolocation) {
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      map.setView([pos.coords.latitude, pos.coords.longitude], 15);
-    },
-    () => {},
-    { timeout: 4000 }
-  );
-}
+})();

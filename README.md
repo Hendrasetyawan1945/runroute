@@ -1,32 +1,13 @@
-# React + TypeScript + Vite
+# RunRoute — Running Route Planner & GPX Exporter
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Web-based running route builder designed for runners. Create custom running routes with pedestrian snap-to-road, real-time distance calculation, elevation profile, and export clean GPX files compatible with Garmin, Coros, Suunto, and Apple Watch.
 
-Currently, two official plugins are available:
+## Fitur Utama
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+- **Snap-to-Road Pintar**: Rute menempel otomatis pada jalan kaki, trotoar, dan jalur pedestrian (mengabaikan pembatasan satu arah mobil).
+- **Profil Elevasi Realtime**: Visualisasi chart elevasi interaktif dengan deteksi total gain & loss ketinggian.
+- **Milestone Penanda KM**: Badge penanda kilometer otomatis (1 km, 2 km, 3 km, ...) langsung di atas jalur lari.
+- **Estimasi Waktu & Target Pace**: Pilihan target pace (4:00/km sampai 10:00/km, atau tanpa pace) beserta tabel rincian KM Splits.
+- **Export GPX 1.1 Siap Pakai**: GPX bersih dengan metadata lengkap untuk Garmin ClimbPro, Coros, dan Apple Watch.
+- **PWA (Progressive Web App)**: Dapat di-install langsung ke layar utama ponsel (Add to Home Screen).
+- **Berbagi Rute (Shareable URL)**: Salin tautan rute langsung via hash URL tanpa beban database server.

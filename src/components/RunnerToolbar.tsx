@@ -62,11 +62,15 @@ export const RunnerToolbar: React.FC<RunnerToolbarProps> = ({
   const distanceKm = distanceMeters / 1000;
 
   // Calculate estimated time based on target pace
-  const totalSeconds = distanceKm * (targetPaceMinutes * 60);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  const timeText = hours > 0 ? `${hours}j ${minutes}m` : `${minutes}m ${seconds}s`;
+  const timeText = (!targetPaceMinutes || targetPaceMinutes <= 0)
+    ? '--:--'
+    : (() => {
+        const totalSeconds = distanceKm * (targetPaceMinutes * 60);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = Math.floor(totalSeconds % 60);
+        return hours > 0 ? `${hours}j ${minutes}m` : `${minutes}m ${seconds}s`;
+      })();
 
   return (
     <>
@@ -118,11 +122,21 @@ export const RunnerToolbar: React.FC<RunnerToolbarProps> = ({
                   }}
                   title="Ubah Target Pace"
                 >
+                  <option value="0" style={{ background: '#0f172a' }}>Tanpa Pace (--:--)</option>
+                  <option value="4.0" style={{ background: '#0f172a' }}>4:00/km (Fast)</option>
                   <option value="4.25" style={{ background: '#0f172a' }}>4:15/km (Race)</option>
+                  <option value="4.5" style={{ background: '#0f172a' }}>4:30/km (Threshold)</option>
                   <option value="5.0" style={{ background: '#0f172a' }}>5:00/km (Tempo)</option>
                   <option value="5.5" style={{ background: '#0f172a' }}>5:30/km (Base)</option>
                   <option value="6.0" style={{ background: '#0f172a' }}>6:00/km (Easy)</option>
                   <option value="6.5" style={{ background: '#0f172a' }}>6:30/km (Recovery)</option>
+                  <option value="7.0" style={{ background: '#0f172a' }}>7:00/km (Slow Run)</option>
+                  <option value="7.5" style={{ background: '#0f172a' }}>7:30/km (Easy Jog)</option>
+                  <option value="8.0" style={{ background: '#0f172a' }}>8:00/km (Jog / Walk)</option>
+                  <option value="8.5" style={{ background: '#0f172a' }}>8:30/km (Slow Jog)</option>
+                  <option value="9.0" style={{ background: '#0f172a' }}>9:00/km (Pace 9 / Walk)</option>
+                  <option value="9.5" style={{ background: '#0f172a' }}>9:30/km (Pace 9:30)</option>
+                  <option value="10.0" style={{ background: '#0f172a' }}>10:00/km (Brisk Walk)</option>
                 </select>
               </div>
             </div>

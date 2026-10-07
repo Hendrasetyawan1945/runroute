@@ -219,7 +219,7 @@ button:active {
 /* LEFT RUNNER TOOLBAR */
 .runner-toolbar {
   position: absolute;
-  top: 90px;
+  top: 125px;
   left: 16px;
   z-index: 10;
   display: flex;
