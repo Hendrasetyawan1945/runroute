@@ -10,15 +10,22 @@ const state = {
   history: [],        // [{ waypoints, routeCoords }]
   historyIndex: -1,
   routingMode: 'follow-roads', // 'follow-roads' | 'straight-line'
-  mapLayer: 'osm',    // 'osm' | 'dark' | 'voyager'
+  mapLayer: 'streets',    // 'streets' | 'osm' | 'topo'
   targetPace: 5.5,    // min/km (5:30/km)
   elevationStats: null,
 };
 
 const STORAGE_KEY = 'runroute_v2_state';
 
-// Tile Layers Configuration
+// Tile Layers Configuration (100% Free, Full CORS, No API Keys)
 const TILE_PROVIDERS = {
+  streets: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    options: {
+      maxZoom: 19,
+      attribution: '&copy; Esri, HERE, Garmin, USGS, OpenStreetMap',
+    },
+  },
   osm: {
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     options: {
@@ -26,18 +33,11 @@ const TILE_PROVIDERS = {
       attribution: '&copy; OpenStreetMap contributors',
     },
   },
-  dark: {
-    url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+  topo: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
     options: {
-      maxZoom: 20,
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-    },
-  },
-  voyager: {
-    url: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-    options: {
-      maxZoom: 20,
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 19,
+      attribution: '&copy; Esri, Intermap, OpenStreetMap',
     },
   },
 };
@@ -53,7 +53,13 @@ const map = L.map('map', {
 // Custom zoom control in bottom-right
 L.control.zoom({ position: 'bottom-right' }).addTo(map);
 
-let currentTileLayer = L.tileLayer(TILE_PROVIDERS.voyager.url, TILE_PROVIDERS.voyager.options).addTo(map);
+let currentTileLayer = L.tileLayer(TILE_PROVIDERS.streets.url, TILE_PROVIDERS.streets.options).addTo(map);
+
+// Invalidate size on start to ensure tiles fill screen immediately
+map.invalidateSize();
+setTimeout(() => map.invalidateSize(), 150);
+setTimeout(() => map.invalidateSize(), 600);
+window.addEventListener('resize', () => map.invalidateSize());
 
 // Route Polylines
 const casingPolyline = L.polyline([], {
@@ -673,15 +679,15 @@ btnToggleMode.addEventListener('click', () => {
 // Map Layer Switcher
 document.getElementById('btn-toggle-layer').addEventListener('click', () => {
   map.removeLayer(currentTileLayer);
-  if (state.mapLayer === 'osm') {
-    state.mapLayer = 'dark';
-    currentTileLayer = L.tileLayer(TILE_PROVIDERS.dark.url, TILE_PROVIDERS.dark.options).addTo(map);
-  } else if (state.mapLayer === 'dark') {
-    state.mapLayer = 'voyager';
-    currentTileLayer = L.tileLayer(TILE_PROVIDERS.voyager.url, TILE_PROVIDERS.voyager.options).addTo(map);
-  } else {
+  if (state.mapLayer === 'streets') {
     state.mapLayer = 'osm';
     currentTileLayer = L.tileLayer(TILE_PROVIDERS.osm.url, TILE_PROVIDERS.osm.options).addTo(map);
+  } else if (state.mapLayer === 'osm') {
+    state.mapLayer = 'topo';
+    currentTileLayer = L.tileLayer(TILE_PROVIDERS.topo.url, TILE_PROVIDERS.topo.options).addTo(map);
+  } else {
+    state.mapLayer = 'streets';
+    currentTileLayer = L.tileLayer(TILE_PROVIDERS.streets.url, TILE_PROVIDERS.streets.options).addTo(map);
   }
 });
 
