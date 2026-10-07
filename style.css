@@ -58,6 +58,14 @@ button:active {
   transform: scale(0.96);
 }
 
+.ui-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 .app-viewport {
   position: relative;
   width: 100vw;

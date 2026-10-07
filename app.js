@@ -53,7 +53,7 @@ const map = L.map('map', {
 // Custom zoom control in bottom-right
 L.control.zoom({ position: 'bottom-right' }).addTo(map);
 
-let currentTileLayer = L.tileLayer(TILE_PROVIDERS.osm.url, TILE_PROVIDERS.osm.options).addTo(map);
+let currentTileLayer = L.tileLayer(TILE_PROVIDERS.voyager.url, TILE_PROVIDERS.voyager.options).addTo(map);
 
 // Route Polylines
 const casingPolyline = L.polyline([], {
@@ -291,8 +291,8 @@ function renderElevationChart() {
 
   dock.style.display = 'block';
 
-  document.getElementById('badge-gain').innerHTML = `<i data-lucide="trending-up"></i> +${stats.gain}m`;
-  document.getElementById('badge-loss').innerHTML = `<i data-lucide="trending-down"></i> -${stats.loss}m`;
+  document.getElementById('badge-gain').textContent = `+${stats.gain}m`;
+  document.getElementById('badge-loss').textContent = `-${stats.loss}m`;
   document.getElementById('badge-range').textContent = `${stats.minElevation}m - ${stats.maxElevation}m`;
 
   const pts = stats.points;
@@ -319,8 +319,6 @@ function renderElevationChart() {
 
   document.getElementById('svg-stroke-path').setAttribute('d', pathD);
   document.getElementById('svg-fill-path').setAttribute('d', fillD);
-
-  lucide.createIcons();
 }
 
 // Interactive Elevation Scrubber
@@ -794,15 +792,11 @@ window.addEventListener('keydown', (e) => {
 // Collapse Elevation Toggle
 document.getElementById('btn-collapse-elev').addEventListener('click', () => {
   const container = document.getElementById('chart-container');
-  const icon = document.getElementById('collapse-icon');
   if (container.style.display === 'none') {
     container.style.display = 'block';
-    icon.setAttribute('data-lucide', 'chevron-down');
   } else {
     container.style.display = 'none';
-    icon.setAttribute('data-lucide', 'chevron-up');
   }
-  lucide.createIcons();
 });
 
 // Load saved state from LocalStorage on mount
